@@ -36,6 +36,15 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "ce409049-a9b6-425b-aa48-7b6f53ca3d1a"
+      }
+    },
+    "owner": "peterthief"
   }
 }
