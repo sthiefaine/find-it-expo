@@ -1,139 +1,160 @@
-import React, { useState, useEffect, useReducer } from "react";
-import { View, StyleSheet, Dimensions } from "react-native";
-import { GameHeader } from "./GameHeader";
-import { GameArea } from "./GameArea";
-import { GameFooter } from "./GameFooter";
-import { CharacterDetails } from "@/helpers/characters";
-import { selectRandomCharacter } from "@/helpers/charactersSelection";
+// Chemin du fichier: /screens/GameScreen.tsx
+import React, { useState, useEffect, useRef } from "react";
+import { View, StyleSheet, BackHandler } from "react-native";
+import { useGameStore, GameStateEnum } from "@/stores/gameStore";
+import { GridSimpleStatic, GridCharacter } from "@/components/Grids/GridSimpleStatic";
+import { GameHeader } from "@/components/GameHeader";
+import { GameFooter } from "@/components/GameFooter";
+import { useShallow } from "zustand/react/shallow";
 
-const { width } = Dimensions.get("window");
-const GAME_SIZE = Math.min(450, width);
-const FOOTER_HEIGHT = 50;
+export const GameScreen = () => {
+  // États pour gérer les interactions avec les personnages
+  const [blinkingCharIdx, setBlinkingCharIdx] = useState<number | null>(null);
+  const [successMode, setSuccessMode] = useState(false);
+  const [isChangingLevel, setIsChangingLevel] = useState(false);
 
-type GameState = {
-  level: number;
-  timeLeft: number;
-  score: number;
-  isActive: boolean;
-  targetCharacter: CharacterDetails;
-};
+  const {
+    gameState,
+    selectedCharacter,
+    pauseGame,
+    resetGame,
+    setPauseTimer,
+    decrementTimeLeft,
+    level,
+    score,
+    timeLeft,
+    addScore,
+    incrementLevel,
+    selectNewCharacter,
+    startGame,
+    setGameState,
+  } = useGameStore(
+    useShallow((state) => ({
+      gameState: state.gameState,
+      selectedCharacter: state.selectedCharacter,
+      level: state.level,
+      score: state.score,
+      timeLeft: state.timeLeft,
+      pauseGame: state.pauseGame,
+      resetGame: state.resetGame,
+      setPauseTimer: state.setPauseTimer,
+      decrementTimeLeft: state.decrementTimeLeft,
+      addScore: state.addScore,
+      incrementLevel: state.incrementLevel,
+      selectNewCharacter: state.selectNewCharacter,
+      startGame: state.startGame,
+      setGameState: state.setGameState,
+    }))
+  );
 
-type GameAction =
-  | { type: "CHARACTER_FOUND" }
-  | { type: "GAME_OVER" }
-  | { type: "RESTART_GAME"; initialLevel: number }
-  | { type: "TICK_TIMER" };
-
-const gameReducer = (state: GameState, action: GameAction): GameState => {
-  switch (action.type) {
-    case "CHARACTER_FOUND":
-      const newLevel = state.level + 1;
-      return {
-        ...state,
-        level: newLevel,
-        score: state.score + state.level * 100,
-        timeLeft: state.timeLeft + 20,
-
-        targetCharacter: selectRandomCharacter(),
-      };
-
-    case "GAME_OVER":
-      return {
-        ...state,
-        isActive: false,
-      };
-
-    case "RESTART_GAME":
-      return {
-        level: action.initialLevel,
-        timeLeft: 60,
-        score: 0,
-        isActive: true,
-        targetCharacter: selectRandomCharacter(),
-      };
-
-    case "TICK_TIMER":
-      const newTimeLeft = state.timeLeft - 1;
-      return {
-        ...state,
-        timeLeft: newTimeLeft,
-      };
-
-    default:
-      return state;
-  }
-};
-
-type GameScreenProps = {
-  initialLevel?: number;
-  targetCharacter?: CharacterDetails;
-  onGameComplete?: (score: number, level: number) => void;
-};
-
-export const GameScreen: React.FC<GameScreenProps> = ({
-  initialLevel = 1,
-  targetCharacter: initialTargetCharacter,
-  onGameComplete,
-}) => {
-  const [gameState, dispatch] = useReducer(gameReducer, {
-    level: initialLevel,
-    timeLeft: 60,
-    score: 0,
-    isActive: true,
-    targetCharacter: initialTargetCharacter || selectRandomCharacter(),
-  });
-
-  const { level, timeLeft, score, isActive, targetCharacter } = gameState;
-
+  // Gestion du bouton retour de l'appareil
   useEffect(() => {
-    if (!isActive) return;
-
-    const timerId = setInterval(() => {
-      if (timeLeft <= 1) {
-        clearInterval(timerId);
-        dispatch({ type: "GAME_OVER" });
-        if (onGameComplete) {
-          onGameComplete(score, level);
-        }
-      } else {
-        dispatch({ type: "TICK_TIMER" });
+    const backAction = () => {
+      if (gameState === GameStateEnum.PLAYING) {
+        pauseGame();
+        return true;
+      } else if (gameState === GameStateEnum.PAUSED) {
+        resetGame();
+        return true;
       }
-    }, 1000);
+      return false;
+    };
 
-    return () => clearInterval(timerId);
-  }, [isActive, timeLeft, onGameComplete, score, level]);
+    const backHandler = BackHandler.addEventListener(
+      "hardwareBackPress",
+      backAction
+    );
 
-  const handleCharacterFound = () => {
-    dispatch({ type: "CHARACTER_FOUND" });
+    return () => backHandler.remove();
+  }, [gameState]);
+
+  // Nettoyage lors du démontage
+  useEffect(() => {
+    return () => {
+      setPauseTimer(true);
+    };
+  }, []);
+
+  const prevGameStateRef = useRef(gameState);
+  
+  // Effet pour surveiller les transitions d'état et réagir lorsque le joueur reprend une partie
+  useEffect(() => {
+    // Détecter la transition de PAUSED à PLAYING (reprise du jeu)
+    if (prevGameStateRef.current === GameStateEnum.PAUSED && gameState === GameStateEnum.PLAYING) {
+      console.log("Reprise du jeu après pause - Régénération du niveau");
+      
+      // Note: La régénération est maintenant gérée dans la fonction resumeGame du store
+      // Nous n'avons plus besoin d'appeler selectNewCharacter() ici
+    }
+    
+    // Mettre à jour la référence pour la prochaine vérification
+    prevGameStateRef.current = gameState;
+  }, [gameState]);
+
+  // Gestion des clics sur les personnages
+  const handleCharacterPress = (character: GridCharacter, index: number) => {
+    if (gameState !== GameStateEnum.PLAYING || isChangingLevel) return;
+
+    if (character.isTarget) {
+      // Si c'est le personnage cible, on déclenche le succès
+      setSuccessMode(true);
+      addScore(50 + level * 10);
+      setPauseTimer(true);
+      
+      // Étape 1: Montrer seulement le personnage cible pendant 2 secondes
+      setTimeout(() => {
+        // Passage à l'état LEVEL_COMPLETE pour la transition
+        setGameState(GameStateEnum.LEVEL_COMPLETE);
+        setIsChangingLevel(true);
+        
+        // Étape 2: Après 3 secondes de transition, préparer le niveau suivant
+        setTimeout(() => {
+          incrementLevel();
+          setSuccessMode(false);
+          selectNewCharacter();
+          
+          // Étape 3: Démarrer le nouveau niveau après 0.5 seconde
+          setTimeout(() => {
+
+            setIsChangingLevel(false);
+            setPauseTimer(false);
+            // Important: revenir à l'état PLAYING
+            startGame();
+          }, 500);
+        }, 3000);
+      }, 2000);
+    } else {
+      // Si ce n'est pas le bon personnage, on le fait clignoter et on pénalise le joueur
+      setBlinkingCharIdx(index);
+      addScore(-10);
+      decrementTimeLeft(5);
+      
+      // Réinitialisation de l'état de clignotement après l'animation
+      setTimeout(() => {
+        setBlinkingCharIdx(null);
+      }, 200);
+    }
   };
 
-  const handleRestartGame = () => {
-    dispatch({ type: "RESTART_GAME", initialLevel });
-  };
+  // Ne rien afficher s'il n'y a pas de personnage sélectionné
+  if (!selectedCharacter) {
+    return null;
+  }
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        <GameHeader
-          targetCharacter={targetCharacter}
-          timeLeft={timeLeft}
-          level={level}
+      <GameHeader />
+
+      <View style={styles.gridWrapper}>
+        <GridSimpleStatic 
+          onCharacterPress={handleCharacterPress}
+          isChangingLevel={isChangingLevel}
+          successMode={successMode}
+          blinkingCharIdx={blinkingCharIdx}
         />
       </View>
 
-      <View style={styles.gameContainer}>
-        <GameArea
-          size={GAME_SIZE}
-          level={level}
-          targetCharacter={targetCharacter}
-          onCharacterFound={handleCharacterFound}
-          isActive={isActive}
-        />
-      </View>
-
-      <View style={[styles.footerContainer, { height: FOOTER_HEIGHT }]}>
-        <GameFooter isGameActive={isActive} onRestart={handleRestartGame} />
-      </View>
+      <GameFooter />
     </View>
   );
 };
@@ -141,22 +162,11 @@ export const GameScreen: React.FC<GameScreenProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    flexDirection: "column",
-    backgroundColor: "#F5F5F5",
+    backgroundColor: "#f5f5f5",
   },
-  headerContainer: {
-    flexGrow: 1,
+  gridWrapper: {
     width: "100%",
-  },
-  gameContainer: {
-    width: "100%",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  footerContainer: {
-    width: "100%",
-    backgroundColor: "#E0E0E0",
-    borderTopWidth: 1,
-    borderTopColor: "#CCCCCC",
+    aspectRatio: 1,
+    alignSelf: "center",
   },
 });

@@ -1,34 +1,41 @@
-import React, { useState, useEffect } from "react";
-import { View, StyleSheet, StatusBar, BackHandler } from "react-native";
-import { Stack, useLocalSearchParams } from "expo-router";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import React, { useEffect } from "react";
+import { View, StyleSheet } from "react-native";
+import { useLocalSearchParams } from "expo-router";
 import { GameScreen } from "@/components/GameScreen";
-import { selectRandomCharacter } from "@/helpers/charactersSelection";
-import { CharacterDetails } from "@/helpers/characters";
+import { useGameStore } from "@/stores/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 export default function GameTab() {
-  const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams();
-  const [targetCharacter, setTargetCharacter] =
-    useState<CharacterDetails | null>(null);
+  const {
+    initGame,
+    selectNewCharacter,
+    selectedCharacter,
+    startGame,
+  } = useGameStore(
+    useShallow((state) => ({
+      initGame: state.initGame,
+      selectNewCharacter: state.selectNewCharacter,
+      selectedCharacter: state.selectedCharacter,
+      startGame: state.startGame,
+    }))
+  );
 
   useEffect(() => {
-    setTargetCharacter(selectRandomCharacter());
+    initGame();
+    selectNewCharacter();
+
+    const timer = setTimeout(() => {
+      startGame();
+    }, 500);
+
+    return () => clearTimeout(timer);
   }, []);
 
-
-  if (!targetCharacter) return null;
+  if (!selectedCharacter) return null;
 
   return (
-    <View style={[styles.container]}>
-      <GameScreen
-        targetCharacter={targetCharacter}
-        initialLevel={Number(params.level) || 1}
-        onGameComplete={(score, level) => {
-
-          console.log(`Jeu terminé! Score: ${score}, Niveau: ${level}`);
-        }}
-      />
+    <View style={styles.container}>
+      <GameScreen />
     </View>
   );
 }

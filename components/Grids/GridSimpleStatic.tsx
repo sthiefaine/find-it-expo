@@ -1,201 +1,265 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   View,
+  Text,
   StyleSheet,
   Dimensions,
   Image,
   TouchableOpacity,
-  Alert,
+  Animated,
 } from "react-native";
 import { CharacterDetails, animalsPack } from "@/helpers/characters";
 import { shuffleArray } from "@/helpers/charactersSelection";
+import { useGameStore, GameStateEnum } from "@/stores/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
-const { width } = Dimensions.get("window");
+const { width: screenWidth } = Dimensions.get("window");
 
+// Define constants
 const CELL_SIZE = 45;
-const GRID_SIZE = Math.min(450, width);
+const GRID_SIZE = Math.min(450, screenWidth);
 
+// Center point in pixels (center of the grid)
 const CENTER_X = Math.floor(GRID_SIZE / 2);
 const CENTER_Y = Math.floor(GRID_SIZE / 2);
 
 const MAX_GRID_SIZE = Math.floor(GRID_SIZE / CELL_SIZE);
 
-type GridDensity = "3x3" | "5x5" | "7x7" | "9x9" | "full" | "max";
-
 type GridPosition = {
-  x: number; // Position in pixels
-  y: number; // Position in pixels
-  scale?: number; // Optional scale factor
+  x: number;
+  y: number;
+  scale?: number;
 };
 
-type GridCharacter = {
+export type GridCharacter = {
   character: CharacterDetails;
   position: GridPosition;
   isTarget: boolean;
 };
 
+// Type for grid density
+type GridDensity =
+  | "2x2"
+  | "3x3"
+  | "4x4"
+  | "5x5"
+  | "6x6"
+  | "7x7"
+  | "8x8"
+  | "9x9"
+  | "full"
+  | "max";
+
 type GridSimpleStaticProps = {
-  level: number;
-  targetCharacter: CharacterDetails;
-  onCharacterFound: () => void;
-  isActive: boolean;
-  density?: GridDensity; // Optional density parameter
+  onCharacterPress: (character: GridCharacter, index: number) => void;
+  isChangingLevel: boolean;
+  successMode: boolean;
+  blinkingCharIdx: number | null;
 };
 
 export const GridSimpleStatic: React.FC<GridSimpleStaticProps> = ({
-  level,
-  targetCharacter,
-  onCharacterFound,
-  isActive,
-  density = "max",
+  onCharacterPress,
+  isChangingLevel,
+  successMode,
+  blinkingCharIdx,
 }) => {
-  const charactersRef = useRef<GridCharacter[]>([]);
-  const levelRef = useRef<number>(0);
-  const targetCharacterRef = useRef<string>("");
-  const densityRef = useRef<GridDensity>(density);
+  // State pour les personnages (au lieu de useRef)
+  const [characters, setCharacters] = useState<GridCharacter[]>([]);
+  
+  // Animation value for blinking
+  const opacityAnim = useRef(new Animated.Value(1)).current;
 
+  const {
+    level,
+    selectedCharacter,
+    gridDensity,
+    gameState,
+  } = useGameStore(
+    useShallow((state) => ({
+      level: state.level,
+      selectedCharacter: state.selectedCharacter,
+      gridDensity: state.gridDensity,
+      gameState: state.gameState,
+    }))
+  );
+
+  const isActive = gameState === GameStateEnum.PLAYING;
+
+  // Ensure we have a selected character
+  if (!selectedCharacter) return null;
+
+  // Génération des personnages lorsque le niveau ou le personnage change
   useEffect(() => {
-    const shouldRegenerate =
-      levelRef.current !== level ||
-      targetCharacterRef.current !== targetCharacter.name ||
-      densityRef.current !== density ||
-      charactersRef.current.length === 0;
+    console.log("Generating characters for level:", level, "character:", selectedCharacter.name);
+    
+    const { characters } = generateGridCharacters(
+      selectedCharacter,
+      level,
+      gridDensity
+    );
+    
+    setCharacters(characters);
+    console.log("Characters generated:", characters.length);
+  }, [level, selectedCharacter, gridDensity]);
 
-    if (shouldRegenerate) {
-      console.log(
-        "Regenerating characters for level:",
-        level,
-        "density:",
-        density
-      );
-      charactersRef.current = generateGridCharacters(
-        targetCharacter,
-        level,
-        density
-      );
-      levelRef.current = level;
-      targetCharacterRef.current = targetCharacter.name;
-      densityRef.current = density;
+  // Effect for optimized blinking
+  useEffect(() => {
+    if (blinkingCharIdx !== null) {
+      // Optimized blinking animation
+      Animated.sequence([
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 50,
+          useNativeDriver: true,
+        }),
+      ]).start();
+      return () => {
+        opacityAnim.stopAnimation();
+        opacityAnim.setValue(1);
+      };
     }
-  }, [level, targetCharacter, density]);
+  }, [blinkingCharIdx]);
 
-  const handleCharacterPress = (character: GridCharacter) => {
-    if (!isActive) return;
 
-    if (character.isTarget) {
-      onCharacterFound();
-    } else {
-      Alert.alert(
-        "Oups!",
-        "Ce n'est pas le personnage recherché, cherche encore!"
-      );
-    }
-  };
-
-  if (charactersRef.current.length === 0) {
-    return null;
+  if (characters.length === 0) {
+    console.log("No characters generated yet");
+    return (
+      <View
+        style={[
+          styles.gridContainer,
+          {
+            width: GRID_SIZE,
+            height: GRID_SIZE,
+            maxWidth: screenWidth,
+            aspectRatio: 1,
+          },
+        ]}
+      >
+        {/* Container vide avec dimensions correctes */}
+      </View>
+    );
   }
 
+
+
+  // Rendre les personnages normalement
   return (
     <View
-      style={[styles.gridContainer, { width: GRID_SIZE, height: GRID_SIZE }]}
+      style={[
+        styles.gridContainer,
+        {
+          width: GRID_SIZE,
+          height: GRID_SIZE,
+          maxWidth: screenWidth,
+          aspectRatio: 1,
+        },
+      ]}
     >
-      {charactersRef.current.map((character, index) => {
-        return (
-          <TouchableOpacity
-            key={`grid-character-${level}-${targetCharacter.name}-${index}`}
-            style={[
-              styles.characterContainer,
-              {
-                left: character.position.x - CELL_SIZE / 2,
-                top: character.position.y - CELL_SIZE / 2,
-                transform: [{ scale: character.position.scale || 1 }],
-              },
-            ]}
-            onPress={() => handleCharacterPress(character)}
-            activeOpacity={0.9}
-            disabled={!isActive}
-          >
-            <Image
-              source={character.character.imageSrc}
-              style={styles.characterImage}
-            />
-          </TouchableOpacity>
-        );
-      })}
+      {/* IMPORTANT: Rendu dans un ordre aléatoire différent pour chaque niveau */}
+      {[...characters] // Créer une copie pour éviter de modifier l'original
+        .sort(() => Math.random() - 0.5) // Mélanger l'ordre d'affichage
+        .map((character, index) => {
+          if (gameState === GameStateEnum.LEVEL_COMPLETE) {
+            return null;
+          }
+          // En mode succès, n'afficher que le personnage cible
+          if (successMode && !character.isTarget) {
+            return null;
+          }
 
-      {/* Debug center point */}
-      <View
-        style={{
-          position: "absolute",
-          left: CENTER_X - 5,
-          top: CENTER_Y - 5,
-          width: 10,
-          height: 10,
-          backgroundColor: "red",
-          borderRadius: 5,
-          zIndex: 1000,
-        }}
-      />
+          // Déterminer si ce personnage est en train de clignoter
+          const isBlinking = index === blinkingCharIdx;
+
+          return (
+            <TouchableOpacity
+              key={`grid-character-${level}-${character.character.name}-${index}-${Math.random()}`}
+              style={[
+                styles.characterContainer,
+                {
+                  left: character.position.x - CELL_SIZE / 2,
+                  top: character.position.y - CELL_SIZE / 2,
+                },
+              ]}
+              onPress={() => onCharacterPress(character, index)}
+              activeOpacity={0.9}
+              disabled={!isActive || isChangingLevel}
+            >
+              {isBlinking ? (
+                <Animated.View style={{ opacity: opacityAnim }}>
+                  <Image
+                    source={character.character.imageSrc}
+                    style={styles.characterImage}
+                  />
+                </Animated.View>
+              ) : (
+                <Image
+                  source={character.character.imageSrc}
+                  style={styles.characterImage}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        })}
     </View>
   );
 };
 
-const generateGridCharacters = (
+export const generateGridCharacters = (
   targetCharacter: CharacterDetails,
   level: number,
   density: GridDensity
-): GridCharacter[] => {
+): { characters: GridCharacter[]; positions: GridPosition[] } => {
   console.log("Generating characters for level:", level, "density:", density);
 
   const characters: GridCharacter[] = [];
+  let positions: GridPosition[] = [];
 
   let gridSize: number;
   switch (density) {
-    case "3x3":
-      gridSize = 3;
-      break; // 9 characters
-    case "5x5":
-      gridSize = 5;
-      break; // 25 characters
-    case "7x7":
-      gridSize = 7;
-      break; // 49 characters
-    case "9x9":
-      gridSize = 9;
-      break; // 81 characters
-    case "full":
-      gridSize = MAX_GRID_SIZE;
-      break; // Dynamic max characters fitting fully on screen
-    case "max":
-      (gridSize = MAX_GRID_SIZE + 1), console.log("gridSize", gridSize);
-      break; // Adds one extra row and column
-    default:
-      gridSize = MAX_GRID_SIZE;
+    case "2x2": gridSize = 2; break;
+    case "3x3": gridSize = 3; break;
+    case "4x4": gridSize = 4; break;
+    case "5x5": gridSize = 5; break;
+    case "6x6": gridSize = 6; break;
+    case "7x7": gridSize = 7; break;
+    case "8x8": gridSize = 8; break;
+    case "9x9": gridSize = 9; break;
+    case "full": gridSize = MAX_GRID_SIZE; break;
+    case "max": gridSize = MAX_GRID_SIZE + 1; break;
+    default: gridSize = MAX_GRID_SIZE;
   }
 
-  const positions: GridPosition[] = [];
+  const totalWidth = gridSize * CELL_SIZE;
 
-  let offsetX, offsetY;
-
-  if (density === "max") {
-    offsetX = 0 - gridSize / 2 + CELL_SIZE / 8;
-    offsetY = 0 - gridSize / 2 + CELL_SIZE / 8;
-  } else {
-    const totalWidth = gridSize * CELL_SIZE;
-    offsetX = Math.floor((GRID_SIZE - totalWidth) / 2) + CELL_SIZE / 2;
-    offsetY = Math.floor((GRID_SIZE - totalWidth) / 2) + CELL_SIZE / 2;
-  }
-
+  const startX = CENTER_X - totalWidth / 2 + CELL_SIZE / 2;
+  const startY = CENTER_Y - totalWidth / 2 + CELL_SIZE / 2;
+  
+  // Générer toutes les positions possibles
   for (let row = 0; row < gridSize; row++) {
     for (let col = 0; col < gridSize; col++) {
       positions.push({
-        x: offsetX + col * CELL_SIZE,
-        y: offsetY + row * CELL_SIZE,
+        x: startX + col * CELL_SIZE,
+        y: startY + row * CELL_SIZE,
       });
     }
   }
 
+  // Mélanger les positions
   const shuffledPositions = shuffleArray([...positions]);
 
   const characterCount = Math.min(
@@ -205,12 +269,15 @@ const generateGridCharacters = (
 
   const selectedPositions = shuffledPositions.slice(0, characterCount);
 
+  // Déterminer l'index pour le personnage cible
   const targetIndex = Math.floor(Math.random() * selectedPositions.length);
 
+  // Filtrer pour avoir des personnages différents du personnage cible
   const otherCharacters = animalsPack.filter(
     (char) => char.name !== targetCharacter.name
   );
 
+  // Création de tous les personnages avec leurs positions
   for (let i = 0; i < selectedPositions.length; i++) {
     if (i === targetIndex) {
       characters.push({
@@ -228,9 +295,8 @@ const generateGridCharacters = (
     }
   }
 
-  return characters;
+  return { characters, positions };
 };
-
 
 const styles = StyleSheet.create({
   gridContainer: {
@@ -242,12 +308,33 @@ const styles = StyleSheet.create({
     position: "absolute",
     width: CELL_SIZE,
     height: CELL_SIZE,
-    justifyContent: "center",
-    alignItems: "center",
   },
   characterImage: {
     width: "100%",
     height: "100%",
     resizeMode: "contain",
+  },
+  transitionContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+  },
+  transitionText: {
+    color: "#FFF",
+    fontSize: 28,
+    fontWeight: "bold",
+    textAlign: "center",
+    padding: 20,
+    backgroundColor: "#4CD964",
+    borderRadius: 15,
+    overflow: "hidden",
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
 });

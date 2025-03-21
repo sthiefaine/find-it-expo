@@ -1,11 +1,14 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { useGameStore } from "@/stores/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
-type LevelIndicatorProps = {
-  level: number;
-};
-
-export const LevelIndicator: React.FC<LevelIndicatorProps> = ({ level }) => {
+export const LevelIndicator = () => {
+  const { level } = useGameStore(
+    useShallow((state) => ({
+      level: state.level,
+    }))
+  );
   return (
     <View style={styles.levelContainer}>
       <Text style={styles.levelLabel}>NIVEAU</Text>

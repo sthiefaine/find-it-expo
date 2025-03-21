@@ -8,24 +8,52 @@ import {
   ViewStyle,
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
+import { useGameStore, GameStateEnum } from "@/stores/gameStore";
+import { useShallow } from "zustand/react/shallow";
 
 const MAX_TIME = 60;
 
-type TimeBarProps = {
-  timeLeft: number;
-  containerWidth?: string;
-};
-
-export const TimeBar: React.FC<TimeBarProps> = ({
-  timeLeft,
-  containerWidth = "60%",
-}) => {
+export const GameTimer = () => {
+  const { timeLeft, gameState, decrementTimeLeft } = useGameStore(
+    useShallow((state) => ({
+      timeLeft: state.timeLeft,
+      gameState: state.gameState,
+      decrementTimeLeft: state.decrementTimeLeft,
+    }))
+  );
+  
   const timePercentageAnim = useRef(
     new Animated.Value(Math.min(timeLeft / MAX_TIME, 1) * 100)
   ).current;
   const timeFlashAnim = useRef(new Animated.Value(0)).current;
   const prevTimeRef = useRef(timeLeft);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Gestion du timer directement dans le composant
+  useEffect(() => {
+    // Nettoyer le timer existant
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+    
+    // Créer un nouveau timer si le jeu est en cours
+    if (gameState === GameStateEnum.PLAYING) {
+      timerRef.current = setInterval(() => {
+        decrementTimeLeft(1);
+      }, 1000);
+    }
+    
+    // Nettoyage
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [gameState]);
+
+  // Animation du timer
   useEffect(() => {
     Animated.timing(timePercentageAnim, {
       toValue: Math.min(timeLeft / MAX_TIME, 1) * 100,
@@ -80,11 +108,12 @@ export const TimeBar: React.FC<TimeBarProps> = ({
     inputRange: [0, 1],
     outputRange: [1, 0.8],
   });
+  
   return (
     <View
       style={[
-        styles.timeBarOuterContainer,
-        { width: containerWidth } as ViewStyle,
+        styles.GameTimerOuterContainer,
+        { width: "60%" } as ViewStyle,
       ]}
     >
       <View style={styles.timeTextContainer}>
@@ -94,7 +123,7 @@ export const TimeBar: React.FC<TimeBarProps> = ({
         </Animated.Text>
       </View>
 
-      <View style={styles.timeBarContainer}>
+      <View style={styles.GameTimerContainer}>
         <Animated.View
           style={{
             width: timePercentageAnim.interpolate({
@@ -108,7 +137,7 @@ export const TimeBar: React.FC<TimeBarProps> = ({
             colors={getTimerColor() as [string, string, ...string[]]}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.timeBarFill}
+            style={styles.GameTimerFill}
           />
         </Animated.View>
       </View>
@@ -117,14 +146,14 @@ export const TimeBar: React.FC<TimeBarProps> = ({
 };
 
 const styles = StyleSheet.create({
-  timeBarOuterContainer: {
+  GameTimerOuterContainer: {
     height: 36,
     backgroundColor: "rgba(0, 0, 0, 0.4)",
     borderRadius: 18,
     overflow: "hidden",
     position: "relative",
   },
-  timeBarContainer: {
+  GameTimerContainer: {
     position: "absolute",
     top: 0,
     left: 0,
@@ -133,7 +162,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     overflow: "hidden",
   },
-  timeBarFill: {
+  GameTimerFill: {
     height: "100%",
     width: "100%",
   },

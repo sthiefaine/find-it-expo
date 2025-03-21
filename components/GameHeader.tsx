@@ -1,25 +1,27 @@
 import React from "react";
 import { View, StyleSheet, Dimensions } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { CharacterDetails } from "@/helpers/characters";
-import { TimeBar } from "./TimeBar";
+import { useGameStore, GameStateEnum } from "@/stores/gameStore";
+import { GameTimer } from "./GameTimer";
 import { LevelIndicator } from "./LevelIndicator";
 import { TargetDisplay } from "./TargetDisplay";
-
+import { useShallow } from "zustand/react/shallow";
 const { width } = Dimensions.get("window");
-const MAX_HEADER_HEIGHT = 400;
 
-type GameHeaderProps = {
-  targetCharacter: CharacterDetails;
-  timeLeft: number;
-  level: number;
-};
+export const GameHeader = () => {
+  const { selectedCharacter, timeLeft, level, gameState } = useGameStore(
+    useShallow((state) => ({
+      selectedCharacter: state.selectedCharacter,
+      timeLeft: state.timeLeft,
+      level: state.level,
+      gameState: state.gameState,
+    }))
+  );
 
-export const GameHeader: React.FC<GameHeaderProps> = ({
-  targetCharacter,
-  timeLeft,
-  level,
-}) => {
+  if (!selectedCharacter) return null;
+
+  const isPlaying = gameState === GameStateEnum.PLAYING;
+
   return (
     <View style={[styles.container]}>
       <LinearGradient
@@ -29,13 +31,12 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 
       <View style={styles.hudContainer}>
         <View style={styles.topRow}>
-          <TimeBar timeLeft={timeLeft} containerWidth="60%" />
-
-          <LevelIndicator level={level} />
+          <GameTimer />
+          <LevelIndicator />
         </View>
       </View>
 
-      <TargetDisplay targetCharacter={targetCharacter} />
+      <TargetDisplay />
     </View>
   );
 };

@@ -66,6 +66,9 @@ interface GameState {
   pauseTimer: boolean;
   isHighScore: boolean;
   debug: boolean;
+
+  // New property for transitions
+  isTransitioning: boolean;
 }
 
 interface GameActions {
@@ -105,6 +108,9 @@ interface GameActions {
   setAnimateTime: (type: AnimateTime) => void;
   toggleDebug: () => void;
 
+  // New action for transition
+  setTransitioning: (isTransitioning: boolean) => void;
+
   // Helpers & Calculations
   getGridDensityForLevel: () => GridDensity;
   getTimeBonus: () => number;
@@ -117,7 +123,7 @@ export type GameStore = GameState & GameActions;
 const defaultInitState: GameState = {
   // Game state
   gameState: GameStateEnum.MENU,
-  level: 1,
+  level: 10,
   score: 0,
   timeLeft: gameConstants.INITIAL_TIME,
   highScores: [],
@@ -136,6 +142,9 @@ const defaultInitState: GameState = {
   pauseTimer: false,
   isHighScore: false,
   debug: false,
+
+  // Transition state
+  isTransitioning: false,
 };
 
 // ------------- Store Creation -------------
@@ -170,33 +179,46 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }),
 
   resumeGame: () =>
-    set({
-      gameState: GameStateEnum.PLAYING,
-      pauseTimer: false,
+    set((state) => {
+      const newCharacter = selectRandomCharacter();
+
+      return {
+        gameState: GameStateEnum.PLAYING,
+        pauseTimer: false,
+        selectedCharacter: newCharacter,
+      };
     }),
 
   completeLevel: () =>
     set((state) => {
       const newScore = state.score + get().getLevelScore();
-      const isHighScore =
-        state.highScores.length === 0 ||
-        state.highScores.length < gameConstants.MAX_HIGH_SCORES ||
-        newScore > Math.min(...state.highScores);
-
-      const newHighScores = [...state.highScores, newScore]
-        .sort((a, b) => b - a)
-        .slice(0, gameConstants.MAX_HIGH_SCORES);
 
       // Check if this was the final level
       const isGameFinished = state.level >= gameConstants.MAX_LEVEL;
 
+      // For the finished game, we still show the finish screen
+      if (isGameFinished) {
+        const isHighScore =
+          state.highScores.length === 0 ||
+          state.highScores.length < gameConstants.MAX_HIGH_SCORES ||
+          newScore > Math.min(...state.highScores);
+
+        const newHighScores = [...state.highScores, newScore]
+          .sort((a, b) => b - a)
+          .slice(0, gameConstants.MAX_HIGH_SCORES);
+
+        return {
+          gameState: GameStateEnum.FINISH,
+          score: newScore,
+          isHighScore,
+          highScores: newHighScores,
+        };
+      }
+
+      // For regular levels, just update the score
+      // The transition handling is now done in GridSimpleStatic
       return {
-        gameState: isGameFinished
-          ? GameStateEnum.FINISH
-          : GameStateEnum.LEVEL_COMPLETE,
         score: newScore,
-        isHighScore,
-        highScores: isGameFinished ? newHighScores : state.highScores,
       };
     }),
 
@@ -246,6 +268,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       score: 0,
       timeLeft: gameConstants.INITIAL_TIME,
       animateTime: "",
+      isTransitioning: false,
     }),
 
   clearGameStore: () =>
@@ -341,6 +364,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => ({
       debug: !state.debug,
     })),
+
+  // New action for transitions
+  setTransitioning: (isTransitioning) =>
+    set({
+      isTransitioning,
+    }),
 
   // ------------- Helpers & Calculations -------------
   getGridDensityForLevel: () => {

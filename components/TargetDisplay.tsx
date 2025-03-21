@@ -1,26 +1,47 @@
 import React from "react";
 import { View, Text, Image, StyleSheet } from "react-native";
-import { CharacterDetails } from "@/helpers/characters";
+import { useGameStore, GameStateEnum } from "@/stores/gameStore";
+import { useShallow } from "zustand/react/shallow";
+import { CountdownDisplay } from "./CountdownDisplay";
 
-type TargetDisplayProps = {
-  targetCharacter: CharacterDetails;
-};
+export const TargetDisplay = () => {
+  const { selectedCharacter, gameState } = useGameStore(
+    useShallow((state) => ({
+      selectedCharacter: state.selectedCharacter,
+      gameState: state.gameState,
+    }))
+  );
 
-export const TargetDisplay: React.FC<TargetDisplayProps> = ({
-  targetCharacter,
-}) => {
+
+  // Sinon afficher le personnage cible normalement
   return (
     <View style={styles.targetContainer}>
       <View style={styles.targetFrame}>
-        <Image source={targetCharacter.imageSrc} style={styles.targetImage} />
+
+        {gameState === GameStateEnum.LEVEL_COMPLETE ? (
+          <CountdownDisplay />
+        ) : (
+          <Image
+            source={selectedCharacter?.imageSrc}
+            style={styles.targetImage}
+
+          />
+        )}
       </View>
+
 
       <View style={styles.targetInfo}>
         <View style={styles.targetBadge}>
           <Text style={styles.targetBadgeText}>Recherché</Text>
         </View>
         <View style={styles.targetNameContainer}>
-          <Text style={styles.targetName}>{targetCharacter.name}</Text>
+          <Text style={styles.targetName}>
+            {gameState === GameStateEnum.LEVEL_COMPLETE ? (
+              "??????????"
+            ) : (
+              selectedCharacter?.name
+            )}
+          </Text>
         </View>
       </View>
     </View>
