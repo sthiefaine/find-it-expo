@@ -13,22 +13,24 @@ export const TargetDisplay = () => {
   );
 
 
-  // Sinon afficher le personnage cible normalement
   return (
     <View style={styles.targetContainer}>
       <View style={styles.targetFrame}>
 
-        {gameState === GameStateEnum.LEVEL_COMPLETE ? (
+        
+        {gameState === GameStateEnum.INIT ||
+        gameState === GameStateEnum.LEVEL_COMPLETE ||
+        gameState === GameStateEnum.LEVEL_INIT ||
+        gameState === GameStateEnum.GAME_RESUME ?
+         (
           <CountdownDisplay />
         ) : (
           <Image
             source={selectedCharacter?.imageSrc}
             style={styles.targetImage}
-
           />
         )}
       </View>
-
 
       <View style={styles.targetInfo}>
         <View style={styles.targetBadge}>
@@ -36,11 +38,12 @@ export const TargetDisplay = () => {
         </View>
         <View style={styles.targetNameContainer}>
           <Text style={styles.targetName}>
-            {gameState === GameStateEnum.LEVEL_COMPLETE ? (
-              "??????????"
-            ) : (
-              selectedCharacter?.name
-            )}
+            {gameState === GameStateEnum.INIT ||
+            gameState === GameStateEnum.LEVEL_COMPLETE ||
+            gameState === GameStateEnum.LEVEL_INIT ||
+            gameState === GameStateEnum.GAME_RESUME
+              ? "??????????"
+              : selectedCharacter?.name}
           </Text>
         </View>
       </View>

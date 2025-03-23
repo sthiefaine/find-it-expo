@@ -6,27 +6,22 @@ import { useGameStore } from "@/stores/gameStore";
 import { useShallow } from "zustand/react/shallow";
 
 export default function GameTab() {
-  const {
-    initGame,
-    selectNewCharacter,
-    selectedCharacter,
-    startGame,
-  } = useGameStore(
-    useShallow((state) => ({
-      initGame: state.initGame,
-      selectNewCharacter: state.selectNewCharacter,
-      selectedCharacter: state.selectedCharacter,
-      startGame: state.startGame,
-    }))
-  );
+  const { initGame, selectNewCharacter, selectedCharacter, startGameplay } =
+    useGameStore(
+      useShallow((state) => ({
+        initGame: state.initGame,
+        selectNewCharacter: state.selectNewCharacter,
+        selectedCharacter: state.selectedCharacter,
+        startGameplay: state.startGameplay,
+      }))
+    );
 
   useEffect(() => {
     initGame();
-    selectNewCharacter();
 
     const timer = setTimeout(() => {
-      startGame();
-    }, 500);
+      startGameplay();
+    }, 3000);
 
     return () => clearTimeout(timer);
   }, []);

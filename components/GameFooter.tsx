@@ -13,8 +13,7 @@ import { router } from "expo-router";
 
 const { width } = Dimensions.get("window");
 
-export const GameFooter: React.FC = () => {
-  // Récupérer les états et les actions du store
+export const GameFooter = () => {
   const {
     gameState,
     pauseGame,
@@ -22,7 +21,7 @@ export const GameFooter: React.FC = () => {
     resetGame,
     initGame,
     selectNewCharacter,
-    startGame,
+    startGameplay,
     level,
   } = useGameStore(
     useShallow((state) => ({
@@ -33,18 +32,22 @@ export const GameFooter: React.FC = () => {
       resetGame: state.resetGame,
       initGame: state.initGame,
       selectNewCharacter: state.selectNewCharacter,
-      startGame: state.startGame,
+      startGameplay: state.startGameplay,
     }))
   );
 
   // Vérifier les différents états du jeu
-  const isGameActive = gameState === GameStateEnum.PLAYING;
-  const isPaused = gameState === GameStateEnum.PAUSED;
+  const isGameActive = gameState === GameStateEnum.GAMEPLAY;
+  const isPaused = gameState === GameStateEnum.GAME_PAUSE;
   const isLevelComplete = gameState === GameStateEnum.LEVEL_COMPLETE;
+  const isLevelInit = gameState === GameStateEnum.LEVEL_INIT;
+  const isGameInit = gameState === GameStateEnum.INIT;
   const isGameOver = gameState === GameStateEnum.GAME_OVER;
-  const isFinished = gameState === GameStateEnum.FINISH;
+  const isFinished = gameState === GameStateEnum.GAME_FINISH;
+  const isSpecialAnimation = gameState === GameStateEnum.LEVEL_SPECIAL_ANIMATION;
+  const isGameEnding = gameState === GameStateEnum.GAME_END;
+  const isTransitioning = isLevelComplete || isLevelInit || isSpecialAnimation;
 
-  // Gérer les actions des boutons
   const handlePauseResume = () => {
     if (isGameActive) {
       pauseGame();
@@ -54,93 +57,83 @@ export const GameFooter: React.FC = () => {
   };
 
   const handleGoToHome = () => {
+    resetGame();
     router.replace('/');
   };
 
-  // Nouvelle fonction de redémarrage complet
   const handleRestart = () => {
-    // Réinitialiser complètement le jeu
     resetGame();
-
-    // Ajouter un délai court pour s'assurer que le reset est terminé
     setTimeout(() => {
-      // Initialiser un nouveau jeu
       initGame();
-
-      // Sélectionner un nouveau personnage
       selectNewCharacter();
-
-      // Démarrer le jeu
-      setTimeout(() => {
-        startGame();
-      }, 100);
     }, 100);
   };
 
-  // Si nous sommes en transition entre niveaux, ne pas afficher de contrôles
-  if (isLevelComplete) {
+
+  if (isTransitioning) {
     return <View style={styles.footer} />;
   }
 
-  return (
-    <View style={styles.footer}>
-      {isGameActive ? (
-        <View style={styles.activeControls}>
-          <TouchableOpacity
-            style={styles.controlButton}
-            onPress={handlePauseResume}
-          >
-            <Ionicons name="pause" size={16} color="white" />
-            <Text style={styles.controlButtonText}>PAUSE</Text>
-          </TouchableOpacity>
-        </View>
-      ) : isPaused ? (
-        <View style={styles.pausedControls}>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.resumeButton]}
-            onPress={handlePauseResume}
-          >
-            <Ionicons name="play" size={16} color="white" />
-            <Text style={styles.controlButtonText}>REPRENDRE</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.quitButton]}
-            onPress={() => handleGoToHome()}
-          >
-            <Ionicons name="home" size={16} color="white" />
-            <Text style={styles.controlButtonText}>QUITTER</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (isGameOver || isFinished) ? (
-        <View style={styles.gameOverControls}>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.restartButton]}
-            onPress={handleRestart}
-          >
-            <Ionicons name="refresh" size={16} color="white" />
-            <Text style={styles.controlButtonText}>REJOUER</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.quitButton, { marginLeft: 15 }]}
-            onPress={() => handleGoToHome()}
-          >
-            <Ionicons name="home" size={16} color="white" />
-            <Text style={styles.controlButtonText}>QUITTER</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={styles.gameOverControls}>
-          <TouchableOpacity
-            style={[styles.controlButton, styles.restartButton]}
-            onPress={handleRestart}
-          >
-            <Ionicons name="play" size={16} color="white" />
-            <Text style={styles.controlButtonText}>JOUER</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
-  );
+  let footerContent = null;
+
+  if (isGameActive) {
+    footerContent = (
+      <View style={styles.activeControls}>
+        <TouchableOpacity
+          style={styles.controlButton}
+          onPress={handlePauseResume}
+        >
+          <Ionicons name="pause" size={16} color="white" />
+          <Text style={styles.controlButtonText}>PAUSE</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  } else if (isPaused) {
+    footerContent = (
+      <View style={styles.pausedControls}>
+        <TouchableOpacity
+          style={[styles.controlButton, styles.resumeButton]}
+          onPress={handlePauseResume}
+        >
+          <Ionicons name="play" size={16} color="white" />
+          <Text style={styles.controlButtonText}>REPRENDRE</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.controlButton, styles.quitButton]}
+          onPress={handleGoToHome}
+        >
+          <Ionicons name="home" size={16} color="white" />
+          <Text style={styles.controlButtonText}>QUITTER</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  } else if (isGameOver || isFinished || isGameEnding) {
+    footerContent = (
+      <View style={styles.gameOverControls}>
+        <TouchableOpacity
+          style={[styles.controlButton, styles.restartButton]}
+          onPress={handleRestart}
+        >
+          <Ionicons name="refresh" size={16} color="white" />
+          <Text style={styles.controlButtonText}>REJOUER</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.controlButton, styles.quitButton, { marginLeft: 15 }]}
+          onPress={handleGoToHome}
+        >
+          <Ionicons name="home" size={16} color="white" />
+          <Text style={styles.controlButtonText}>QUITTER</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  } else if (isGameInit) {
+    footerContent = (
+      <View style={styles.gameOverControls}>
+      </View>
+    );
+  }
+
+  return <View style={styles.footer}>{footerContent}</View>;
 };
 
 const styles = StyleSheet.create({
@@ -208,6 +201,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "bold",
     color: "#4c669f",
-    marginLeft: 10,
+    marginRight: 10,
   },
 });

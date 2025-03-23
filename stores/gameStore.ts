@@ -19,15 +19,17 @@ export const gameConstants = {
 
 // ------------- Types & Enums -------------
 export enum GameStateEnum {
-  MENU = "MENU",
-  INIT = "INIT",
-  READY = "READY",
-  PLAYING = "PLAYING",
-  PAUSED = "PAUSED",
-  LEVEL_COMPLETE = "LEVEL_COMPLETE",
-  NEW_CHARACTER = "NEW_CHARACTER",
-  GAME_OVER = "GAME_OVER",
-  FINISH = "FINISH",
+  MENU = "MENU", // Main menu screen
+  INIT = "INIT", // Initial game setup (level 0)
+  GAMEPLAY = "GAMEPLAY", // Active gameplay
+  LEVEL_INIT = "LEVEL_INIT", // Level initialization with countdown
+  LEVEL_COMPLETE = "LEVEL_COMPLETE", // Level completed, showing correct character
+  LEVEL_SPECIAL_ANIMATION = "LEVEL_SPECIAL_ANIMATION", // For future special animations
+  GAME_PAUSE = "GAME_PAUSE", // Game paused
+  GAME_RESUME = "GAME_RESUME", // Resuming from pause, regenerate level
+  GAME_FINISH = "GAME_FINISH", // Successfully finished all levels
+  GAME_END = "GAME_END", // Normal end of game
+  GAME_OVER = "GAME_OVER", // Game over (failed)
 }
 
 export type GridDensity =
@@ -67,8 +69,8 @@ interface GameState {
   isHighScore: boolean;
   debug: boolean;
 
-  // New property for transitions
-  isTransitioning: boolean;
+  // Counter for level init animation
+  levelInitCounter: number;
 }
 
 interface GameActions {
@@ -77,12 +79,14 @@ interface GameActions {
 
   // Game flow
   initGame: () => void;
-  startGame: () => void;
+  startGameplay: () => void;
   pauseGame: () => void;
   resumeGame: () => void;
   completeLevel: () => void;
-  showNewCharacter: () => void;
+  initNextLevel: () => void;
+  startLevelSpecialAnimation: () => void;
   gameOver: () => void;
+  endGame: () => void;
   finishGame: () => void;
   resetGame: () => void;
   clearGameStore: () => void;
@@ -107,9 +111,7 @@ interface GameActions {
   setPauseTimer: (pause: boolean) => void;
   setAnimateTime: (type: AnimateTime) => void;
   toggleDebug: () => void;
-
-  // New action for transition
-  setTransitioning: (isTransitioning: boolean) => void;
+  decrementLevelInitCounter: () => void;
 
   // Helpers & Calculations
   getGridDensityForLevel: () => GridDensity;
@@ -123,7 +125,7 @@ export type GameStore = GameState & GameActions;
 const defaultInitState: GameState = {
   // Game state
   gameState: GameStateEnum.MENU,
-  level: 10,
+  level: 1,
   score: 0,
   timeLeft: gameConstants.INITIAL_TIME,
   highScores: [],
@@ -143,8 +145,8 @@ const defaultInitState: GameState = {
   isHighScore: false,
   debug: false,
 
-  // Transition state
-  isTransitioning: false,
+  // Level init counter (for countdown animation)
+  levelInitCounter: 3,
 };
 
 // ------------- Store Creation -------------
@@ -161,20 +163,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
       ...defaultInitState,
       gameState: GameStateEnum.INIT,
       selectedCharacter: selectRandomCharacter(),
-      soundEnabled: get().soundEnabled,
-      vibrationEnabled: get().vibrationEnabled,
-      highScores: get().highScores,
     })),
 
-  startGame: () =>
+  startGameplay: () =>
     set({
-      gameState: GameStateEnum.PLAYING,
+      gameState: GameStateEnum.GAMEPLAY,
       pauseTimer: false,
     }),
 
   pauseGame: () =>
     set({
-      gameState: GameStateEnum.PAUSED,
+      gameState: GameStateEnum.GAME_PAUSE,
       pauseTimer: true,
     }),
 
@@ -182,11 +181,23 @@ export const useGameStore = create<GameStore>((set, get) => ({
     set((state) => {
       const newCharacter = selectRandomCharacter();
 
-      return {
-        gameState: GameStateEnum.PLAYING,
-        pauseTimer: false,
+      // D'abord passer à l'état GAME_RESUME
+      set({
+        gameState: GameStateEnum.GAME_RESUME,
+        pauseTimer: true, // Maintenir le timer en pause pendant la transition
         selectedCharacter: newCharacter,
-      };
+      });
+
+      // Puis après un court délai, passer à LEVEL_INIT pour le même niveau
+      setTimeout(() => {
+        set({
+          gameState: GameStateEnum.LEVEL_INIT,
+          levelInitCounter: 3, // Réinitialiser le compteur à rebours
+          animationLevelLoading: true,
+        });
+      }, 300);
+
+      return {}; // Le changement immédiat est fait avec set() ci-dessus
     }),
 
   completeLevel: () =>
@@ -208,25 +219,33 @@ export const useGameStore = create<GameStore>((set, get) => ({
           .slice(0, gameConstants.MAX_HIGH_SCORES);
 
         return {
-          gameState: GameStateEnum.FINISH,
+          gameState: GameStateEnum.GAME_FINISH,
           score: newScore,
           isHighScore,
           highScores: newHighScores,
         };
       }
 
-      // For regular levels, just update the score
-      // The transition handling is now done in GridSimpleStatic
       return {
+        gameState: GameStateEnum.LEVEL_COMPLETE,
         score: newScore,
+        pauseTimer: true,
       };
     }),
 
-  showNewCharacter: () =>
+  initNextLevel: () =>
     set({
-      gameState: GameStateEnum.NEW_CHARACTER,
-      selectedCharacter: selectRandomCharacter(),
+      gameState: GameStateEnum.LEVEL_INIT,
+      levelInitCounter: 3,
       animationLevelLoading: true,
+      pauseTimer: true,
+      gridDensity: get().getGridDensityForLevel(),
+    }),
+
+  startLevelSpecialAnimation: () =>
+    set({
+      gameState: GameStateEnum.LEVEL_SPECIAL_ANIMATION,
+      pauseTimer: true,
     }),
 
   gameOver: () =>
@@ -245,6 +264,11 @@ export const useGameStore = create<GameStore>((set, get) => ({
       };
     }),
 
+  endGame: () =>
+    set({
+      gameState: GameStateEnum.GAME_END,
+    }),
+
   finishGame: () =>
     set((state) => {
       const isHighScore =
@@ -253,7 +277,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
         state.score > Math.min(...state.highScores);
 
       return {
-        gameState: GameStateEnum.FINISH,
+        gameState: GameStateEnum.GAME_FINISH,
         isHighScore,
         highScores: [...state.highScores, state.score]
           .sort((a, b) => b - a)
@@ -263,12 +287,12 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   resetGame: () =>
     set({
-      gameState: GameStateEnum.MENU,
-      level: 1,
+      gameState: GameStateEnum.INIT,
+      level: 0,
       score: 0,
       timeLeft: gameConstants.INITIAL_TIME,
       animateTime: "",
-      isTransitioning: false,
+      levelInitCounter: 3,
     }),
 
   clearGameStore: () =>
@@ -283,12 +307,6 @@ export const useGameStore = create<GameStore>((set, get) => ({
   incrementLevel: () =>
     set((state) => ({
       level: state.level + 1,
-      timeLeft: Math.min(
-        state.timeLeft + get().getTimeBonus(),
-        gameConstants.MAX_TIME
-      ),
-      gridDensity: get().getGridDensityForLevel(),
-      animateTime: "+",
     })),
 
   addScore: (points) =>
@@ -304,7 +322,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       const newTime = Math.max(0, state.timeLeft - amount);
 
       // Schedule game over if time runs out
-      if (newTime <= 0 && state.gameState === GameStateEnum.PLAYING) {
+      if (newTime <= 0 && state.gameState === GameStateEnum.GAMEPLAY) {
         setTimeout(() => get().gameOver(), 0);
       }
 
@@ -365,11 +383,10 @@ export const useGameStore = create<GameStore>((set, get) => ({
       debug: !state.debug,
     })),
 
-  // New action for transitions
-  setTransitioning: (isTransitioning) =>
-    set({
-      isTransitioning,
-    }),
+  decrementLevelInitCounter: () =>
+    set((state) => ({
+      levelInitCounter: Math.max(0, state.levelInitCounter - 1),
+    })),
 
   // ------------- Helpers & Calculations -------------
   getGridDensityForLevel: () => {

@@ -21,7 +21,7 @@ export const GameTimer = () => {
       decrementTimeLeft: state.decrementTimeLeft,
     }))
   );
-  
+
   const timePercentageAnim = useRef(
     new Animated.Value(Math.min(timeLeft / MAX_TIME, 1) * 100)
   ).current;
@@ -29,22 +29,16 @@ export const GameTimer = () => {
   const prevTimeRef = useRef(timeLeft);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Gestion du timer directement dans le composant
   useEffect(() => {
-    // Nettoyer le timer existant
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
-    
-    // Créer un nouveau timer si le jeu est en cours
-    if (gameState === GameStateEnum.PLAYING) {
+    if (gameState === GameStateEnum.GAMEPLAY) {
       timerRef.current = setInterval(() => {
         decrementTimeLeft(1);
       }, 1000);
     }
-    
-    // Nettoyage
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -108,13 +102,10 @@ export const GameTimer = () => {
     inputRange: [0, 1],
     outputRange: [1, 0.8],
   });
-  
+
   return (
     <View
-      style={[
-        styles.GameTimerOuterContainer,
-        { width: "60%" } as ViewStyle,
-      ]}
+      style={[styles.GameTimerOuterContainer, { width: "60%" } as ViewStyle]}
     >
       <View style={styles.timeTextContainer}>
         <Text style={styles.timeLabel}>TEMPS</Text>

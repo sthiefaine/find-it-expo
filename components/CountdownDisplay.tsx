@@ -96,7 +96,7 @@ export const CountdownDisplay = () => {
       // setSoundSrc(playStartSound);
       
       // Passer à l'état de jeu PLAYING
-      setGameState(GameStateEnum.PLAYING);
+      setGameState(GameStateEnum.GAMEPLAY);
     }
   }, [countdown, setGameState]);
 

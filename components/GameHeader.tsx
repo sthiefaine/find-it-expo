@@ -20,7 +20,7 @@ export const GameHeader = () => {
 
   if (!selectedCharacter) return null;
 
-  const isPlaying = gameState === GameStateEnum.PLAYING;
+
 
   return (
     <View style={[styles.container]}>

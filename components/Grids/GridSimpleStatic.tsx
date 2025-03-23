@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, ReactNode } from "react";
 import {
   View,
   Text,
@@ -12,17 +12,15 @@ import { CharacterDetails, animalsPack } from "@/helpers/characters";
 import { shuffleArray } from "@/helpers/charactersSelection";
 import { useGameStore, GameStateEnum } from "@/stores/gameStore";
 import { useShallow } from "zustand/react/shallow";
+import { useCharacterInteraction } from "@/hooks/useCharacterInteraction";
 
 const { width: screenWidth } = Dimensions.get("window");
 
 // Define constants
 const CELL_SIZE = 45;
 const GRID_SIZE = Math.min(450, screenWidth);
-
-// Center point in pixels (center of the grid)
 const CENTER_X = Math.floor(GRID_SIZE / 2);
 const CENTER_Y = Math.floor(GRID_SIZE / 2);
-
 const MAX_GRID_SIZE = Math.floor(GRID_SIZE / CELL_SIZE);
 
 type GridPosition = {
@@ -50,22 +48,19 @@ type GridDensity =
   | "full"
   | "max";
 
-type GridSimpleStaticProps = {
-  onCharacterPress: (character: GridCharacter, index: number) => void;
-  isChangingLevel: boolean;
-  successMode: boolean;
-  blinkingCharIdx: number | null;
-};
-
-export const GridSimpleStatic: React.FC<GridSimpleStaticProps> = ({
-  onCharacterPress,
-  isChangingLevel,
-  successMode,
-  blinkingCharIdx,
-}) => {
-  // State pour les personnages (au lieu de useRef)
+export const GridSimpleStatic = ({}) => {
   const [characters, setCharacters] = useState<GridCharacter[]>([]);
-  
+  const [displayOrder, setDisplayOrder] = useState<GridCharacter[]>([]);
+
+  const {
+    disableClick,
+    blinkState,
+    selectedCharacterPos,
+    isCorrectSelection,
+    pointsEffects,
+    handleCharacterPress,
+  } = useCharacterInteraction();
+
   // Animation value for blinking
   const opacityAnim = useRef(new Animated.Value(1)).current;
 
@@ -74,70 +69,106 @@ export const GridSimpleStatic: React.FC<GridSimpleStaticProps> = ({
     selectedCharacter,
     gridDensity,
     gameState,
+    levelInitCounter,
+    decrementLevelInitCounter,
+    startGameplay,
   } = useGameStore(
     useShallow((state) => ({
       level: state.level,
       selectedCharacter: state.selectedCharacter,
       gridDensity: state.gridDensity,
       gameState: state.gameState,
+      levelInitCounter: state.levelInitCounter,
+      decrementLevelInitCounter: state.decrementLevelInitCounter,
+      startGameplay: state.startGameplay,
     }))
   );
 
-  const isActive = gameState === GameStateEnum.PLAYING;
+  // Timer for LEVEL_INIT countdown
+  useEffect(() => {
+    console.log("TEST ===> gameState", gameState);
+    let countdownTimer: NodeJS.Timeout | null = null;
+
+    if (
+      (gameState === GameStateEnum.LEVEL_INIT ||
+        gameState === GameStateEnum.INIT) &&
+      levelInitCounter > 0
+    ) {
+      countdownTimer = setInterval(() => {
+        decrementLevelInitCounter();
+      }, 1000);
+    }
+
+    if (gameState === GameStateEnum.LEVEL_INIT && levelInitCounter === 0) {
+      const timer = setTimeout(() => {
+        startGameplay();
+      }, 1000);
+
+      return () => clearTimeout(timer);
+    }
+
+    return () => {
+      if (countdownTimer) clearInterval(countdownTimer);
+    };
+  }, [gameState, levelInitCounter]);
+
+  const isActive = gameState === GameStateEnum.GAMEPLAY;
 
   // Ensure we have a selected character
   if (!selectedCharacter) return null;
 
-  // Génération des personnages lorsque le niveau ou le personnage change
   useEffect(() => {
-    console.log("Generating characters for level:", level, "character:", selectedCharacter.name);
-    
-    const { characters } = generateGridCharacters(
-      selectedCharacter,
-      level,
-      gridDensity
-    );
-    
-    setCharacters(characters);
-    console.log("Characters generated:", characters.length);
-  }, [level, selectedCharacter, gridDensity]);
-
-  // Effect for optimized blinking
-  useEffect(() => {
-    if (blinkingCharIdx !== null) {
-      // Optimized blinking animation
-      Animated.sequence([
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 0,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-        Animated.timing(opacityAnim, {
-          toValue: 1,
-          duration: 50,
-          useNativeDriver: true,
-        }),
-      ]).start();
-      return () => {
-        opacityAnim.stopAnimation();
-        opacityAnim.setValue(1);
-      };
+    console.log("gameState", gameState);
+    if (gameState === GameStateEnum.GAMEPLAY) {
+      console.log(
+        "Generating characters for level:",
+        level,
+        "character:",
+        selectedCharacter.name
+      );
+      const { characters } = generateGridCharacters(
+        selectedCharacter,
+        level,
+        gridDensity
+      );
+      setCharacters(characters);
+      const shuffledCharacters = [...characters].sort(
+        () => Math.random() - 0.5
+      );
+      setDisplayOrder(shuffledCharacters);
     }
-  }, [blinkingCharIdx]);
+  }, [level, levelInitCounter, selectedCharacter, gridDensity, gameState]);
 
+  useEffect(() => {
+    if (selectedCharacterPos) {
+      if (blinkState) {
+        // Montrer l'image (opacité 1)
+        Animated.timing(opacityAnim, {
+          toValue: 1,
+          duration: 50,
+          useNativeDriver: true,
+        }).start();
+      } else {
+        // Cacher l'image (opacité 0)
+        Animated.timing(opacityAnim, {
+          toValue: 0,
+          duration: 50,
+          useNativeDriver: true,
+        }).start();
+      }
+    } else {
+      opacityAnim.setValue(1);
+    }
+  }, [blinkState, selectedCharacterPos]);
 
-  if (characters.length === 0) {
-    console.log("No characters generated yet");
+  const isSamePosition = (
+    pos1: GridPosition,
+    pos2: { x: number; y: number }
+  ) => {
+    return Math.abs(pos1.x - pos2.x) < 0.1 && Math.abs(pos1.y - pos2.y) < 0.1;
+  };
+
+  if (gameState === GameStateEnum.LEVEL_SPECIAL_ANIMATION) {
     return (
       <View
         style={[
@@ -150,14 +181,13 @@ export const GridSimpleStatic: React.FC<GridSimpleStaticProps> = ({
           },
         ]}
       >
-        {/* Container vide avec dimensions correctes */}
+        <View style={styles.transitionContainer}>
+          <Text style={styles.specialAnimationText}>Animation Spéciale!</Text>
+        </View>
       </View>
     );
   }
 
-
-
-  // Rendre les personnages normalement
   return (
     <View
       style={[
@@ -170,51 +200,45 @@ export const GridSimpleStatic: React.FC<GridSimpleStaticProps> = ({
         },
       ]}
     >
-      {/* IMPORTANT: Rendu dans un ordre aléatoire différent pour chaque niveau */}
-      {[...characters] // Créer une copie pour éviter de modifier l'original
-        .sort(() => Math.random() - 0.5) // Mélanger l'ordre d'affichage
-        .map((character, index) => {
-          if (gameState === GameStateEnum.LEVEL_COMPLETE) {
-            return null;
-          }
-          // En mode succès, n'afficher que le personnage cible
-          if (successMode && !character.isTarget) {
-            return null;
-          }
+      {pointsEffects}
 
-          // Déterminer si ce personnage est en train de clignoter
-          const isBlinking = index === blinkingCharIdx;
-
-          return (
-            <TouchableOpacity
-              key={`grid-character-${level}-${character.character.name}-${index}-${Math.random()}`}
-              style={[
-                styles.characterContainer,
-                {
-                  left: character.position.x - CELL_SIZE / 2,
-                  top: character.position.y - CELL_SIZE / 2,
-                },
-              ]}
-              onPress={() => onCharacterPress(character, index)}
-              activeOpacity={0.9}
-              disabled={!isActive || isChangingLevel}
-            >
-              {isBlinking ? (
-                <Animated.View style={{ opacity: opacityAnim }}>
-                  <Image
-                    source={character.character.imageSrc}
-                    style={styles.characterImage}
-                  />
-                </Animated.View>
-              ) : (
+      {displayOrder.map((character, index) => {
+        if (isCorrectSelection && !character.isTarget) {
+          return null;
+        }
+        const shouldBlink =
+          selectedCharacterPos &&
+          isSamePosition(character.position, selectedCharacterPos);
+        return (
+          <TouchableOpacity
+            key={`character-${level}-${index}-${character.position.x}-${character.position.y}`}
+            style={[
+              styles.characterContainer,
+              {
+                left: character.position.x - CELL_SIZE / 2,
+                top: character.position.y - CELL_SIZE / 2,
+              },
+            ]}
+            onPress={() => handleCharacterPress(character)}
+            activeOpacity={0.9}
+            disabled={!isActive || disableClick}
+          >
+            {shouldBlink ? (
+              <Animated.View style={{ opacity: opacityAnim }}>
                 <Image
                   source={character.character.imageSrc}
                   style={styles.characterImage}
                 />
-              )}
-            </TouchableOpacity>
-          );
-        })}
+              </Animated.View>
+            ) : (
+              <Image
+                source={character.character.imageSrc}
+                style={styles.characterImage}
+              />
+            )}
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 };
@@ -231,25 +255,45 @@ export const generateGridCharacters = (
 
   let gridSize: number;
   switch (density) {
-    case "2x2": gridSize = 2; break;
-    case "3x3": gridSize = 3; break;
-    case "4x4": gridSize = 4; break;
-    case "5x5": gridSize = 5; break;
-    case "6x6": gridSize = 6; break;
-    case "7x7": gridSize = 7; break;
-    case "8x8": gridSize = 8; break;
-    case "9x9": gridSize = 9; break;
-    case "full": gridSize = MAX_GRID_SIZE; break;
-    case "max": gridSize = MAX_GRID_SIZE + 1; break;
-    default: gridSize = MAX_GRID_SIZE;
+    case "2x2":
+      gridSize = 2;
+      break;
+    case "3x3":
+      gridSize = 3;
+      break;
+    case "4x4":
+      gridSize = 4;
+      break;
+    case "5x5":
+      gridSize = 5;
+      break;
+    case "6x6":
+      gridSize = 6;
+      break;
+    case "7x7":
+      gridSize = 7;
+      break;
+    case "8x8":
+      gridSize = 8;
+      break;
+    case "9x9":
+      gridSize = 9;
+      break;
+    case "full":
+      gridSize = MAX_GRID_SIZE;
+      break;
+    case "max":
+      gridSize = MAX_GRID_SIZE + 1;
+      break;
+    default:
+      gridSize = MAX_GRID_SIZE;
   }
 
   const totalWidth = gridSize * CELL_SIZE;
 
   const startX = CENTER_X - totalWidth / 2 + CELL_SIZE / 2;
   const startY = CENTER_Y - totalWidth / 2 + CELL_SIZE / 2;
-  
-  // Générer toutes les positions possibles
+
   for (let row = 0; row < gridSize; row++) {
     for (let col = 0; col < gridSize; col++) {
       positions.push({
@@ -269,15 +313,12 @@ export const generateGridCharacters = (
 
   const selectedPositions = shuffledPositions.slice(0, characterCount);
 
-  // Déterminer l'index pour le personnage cible
   const targetIndex = Math.floor(Math.random() * selectedPositions.length);
 
-  // Filtrer pour avoir des personnages différents du personnage cible
   const otherCharacters = animalsPack.filter(
     (char) => char.name !== targetCharacter.name
   );
 
-  // Création de tous les personnages avec leurs positions
   for (let i = 0; i < selectedPositions.length; i++) {
     if (i === targetIndex) {
       characters.push({
@@ -331,6 +372,29 @@ const styles = StyleSheet.create({
     textAlign: "center",
     padding: 20,
     backgroundColor: "#4CD964",
+    borderRadius: 15,
+    overflow: "hidden",
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
+  },
+  countdownText: {
+    color: "#FFF",
+    fontSize: 72,
+    fontWeight: "bold",
+    marginBottom: 20,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 2, height: 2 },
+    textShadowRadius: 3,
+  },
+
+  specialAnimationText: {
+    color: "#FFF",
+    fontSize: 36,
+    fontWeight: "bold",
+    textAlign: "center",
+    padding: 20,
+    backgroundColor: "#FF9500",
     borderRadius: 15,
     overflow: "hidden",
     textShadowColor: "rgba(0, 0, 0, 0.5)",
